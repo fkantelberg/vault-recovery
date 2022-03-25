@@ -1,8 +1,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-![PyPI - Python Version](https://img.shields.io/pypi/pyversions/vault-tools)
+![PyPI - Python Version](https://img.shields.io/pypi/pyversions/vault-recovery)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
-# vault-tools
+# vault-recovery
 
 This tool provides utilities for a disaster recovery for the Odoo vault module from
 database backups or formerly exported files. The backups need atleast the following
@@ -15,6 +15,12 @@ tables for the recovery:
 - vault_field
 - vault_file
 - vault_right
+
+## Installation
+
+```bash
+$ pip3 install vault-recovery
+```
 
 ## Security
 
@@ -68,11 +74,16 @@ $ vault decrypt -i encrypted.json --password -o ~/vaults > raw.json
 
 ## Files types
 
-`exported` files contain all information needed to recover vaults. They can be used
+The tool outputs various JSON files for different purposes to store the data and to
+allow splitting the process into steps. All files are structured as a dictionary
+with a `type` key. The following types exists:
+
+- `exported`: contains all information needed to recover vaults. They can be used
 to recover the data on more secure environments.
 
-`plain` files contain the most information of a recovered vault. These files are
+- `plain`: contains the most information of a recovered vault. These files are
 unencrypted.
 
-`raw` and `encrypted` files are importable by the Odoo vault module. `raw` files are
-unencrypted. `encrypted` files are protected by a password or passfile.
+- `raw`: contains unencrypted entries ready to be imported into a running vault
+
+- `encrypted`: contains encrypted entries ready to be imported into a running vault
