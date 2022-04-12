@@ -4,21 +4,21 @@ build-backend = "setuptools.build_meta"
 
 [tool.black]
 line-length = 88
-target-version = ['py37', 'py38']
+target-version = ['py37', 'py38', 'py39']
 include = '(\.pyi?$|src|tests)'
 
 [tool.tox]
 legacy_tox_ini = """
 [tox]
-envlist = clean,py38,report
+envlist = clean,py39,report
 
 [testenv]
 deps = pytest
        pytest-cov
        coverage
 depends:
-    py38: clean
-    report: py38
+    py39: clean
+    report: py39
 commands = pytest --cov {envsitepackagesdir}/vault --cov-append
 
 [testenv:report]

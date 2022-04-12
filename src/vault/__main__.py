@@ -236,7 +236,7 @@ def main_info(vault, args, db_params):
         return
 
     for user in vault.list_user_keys(args.user):
-        info(f"User: {user['login']} [{user['uuid']}]")
+        info(f"User: {user['login']} [{user['uuid']}] [Version: {user['version']}]")
         info(f"  Fingerprint: {user['fingerprint']}")
         info("  Vaults:")
         for uuid, v in vault.list_vaults(user["uuid"], args.vault).items():

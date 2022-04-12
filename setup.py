@@ -10,7 +10,7 @@ def read(fname):
 
 setup(
     name="vault-recovery",
-    version="0.1",
+    version="0.2",
     author="Florian Kantelberg",
     author_email="florian.kantelberg@mailbox.org",
     description="Tool for a disaster recovery of Odoo's vault module",

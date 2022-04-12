@@ -115,12 +115,14 @@ def test_save_to_files(vault):
 
 def test_private_key_extraction(vault):
     mock = vault.cursor = MagicMock()
+    vault.exists = MagicMock()
     cursor = mock.return_value.__enter__.return_value
     cursor.fetchone.return_value = {1: 42}
 
     assert vault.extract_private_key("abc") == {1: 42}
     cursor.execute.assert_called_once()
     cursor.fetchone.assert_called_once()
+    vault.exists.assert_called_once()
 
     cursor.rowcount = 0
     assert vault.extract_private_key("abc") == {}

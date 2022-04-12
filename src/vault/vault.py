@@ -34,6 +34,20 @@ class Vault:
         self.conn = connect(**{k: v for k, v in kwargs.items() if v is not None})
         return self.check_database()
 
+    def exists(self, cr, table, column=None):
+        """Check if the table (and column) exists in the database"""
+        query = """
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = %s
+        """
+
+        if column:
+            cr.execute(f"{query} AND column_name = %s", (table, column))
+        else:
+            cr.execute(query, (table,))
+
+        return bool(cr.rowcount)
+
     @contextmanager
     def cursor(self):
         with self.conn.cursor(cursor_factory=DictCursor) as cr:
@@ -54,8 +68,13 @@ class Vault:
     def list_user_keys(self, user_uuid=None):
         """List all available user keys"""
         with self.cursor() as cr:
-            query = """
-                SELECT k.uuid, u.login, k.fingerprint
+            if self.exists(cr, "res_users_key", "version"):
+                additional = ", k.version"
+            else:
+                additional = ", null AS version"
+
+            query = f"""
+                SELECT k.uuid, u.login, k.fingerprint {additional}
                 FROM res_users_key AS k
                 LEFT JOIN res_users AS u
                 ON u.id = k.user_id
@@ -113,9 +132,15 @@ class Vault:
     def extract_private_key(self, key_uuid):
         """Extract information about the key from the database"""
         with self.cursor() as cr:
+            if self.exists(cr, "res_users_key", "version"):
+                additional = ", k.version"
+            else:
+                additional = ", null AS version"
+
             cr.execute(
-                """
+                f"""
                 SELECT k.iv, k.fingerprint, k.salt, k.iterations, k.private, u.login
+                    {additional}
                 FROM res_users_key AS k
                 LEFT JOIN res_users AS u ON u.id = k.user_id
                 WHERE k.uuid = %s AND k.current = true""",
@@ -245,8 +270,16 @@ class Vault:
         """Request the password to decrypt the private RSA key"""
         utils.info(f"Using key {data['fingerprint']} for {data['login']}")
 
+        version = data.get("version")
+        if self.verbose:
+            utils.info(f"Decrypting legacy key with version {version}")
+
+        # Backwards compatibility
+        if not version:
+            password = f"{data['login']}|{password}"
+
         secret = utils.derive_key(
-            f"{data['login']}|{password}".encode(),
+            password.encode(),
             base64.b64decode(data["salt"]),
             data["iterations"],
         )

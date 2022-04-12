@@ -135,6 +135,7 @@ PrivateKey = {
     "73:2b:e7:0b:69:6b:5c:4a:44:55:48:17",
     "salt": "Z0609ld60XXawwgnRGOdvM+tIL52znXwIMd+MjKqOpY=",
     "iterations": 4000,
+    "version": None,
     "private": "WKe3JqCyBlsGyJ1lVht99xAJEgdjm4C270qnVhJNc6Bx3UcsfCYLLQpNmeKJeoWt"
     "fLJYnKkmV972X0N41/1Ld3QO2Ax/qhtxV3rAKdcUGAMBbPP3FAxncH/GOonTE0L2zq9xcUP58vr"
     "F+ValV97CBD2OrRDupH7BsgWAX3mHTZh+XTACdluq6UsyFli+3Aqkwb3+V0fWdP+ifVhQErUlCE"

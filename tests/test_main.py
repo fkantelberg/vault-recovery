@@ -39,7 +39,7 @@ def recover_args():
 
 
 def test_info(vault):
-    user = {"login": "admin", "uuid": "a-b-c", "fingerprint": "ab:cd"}
+    user = {"login": "admin", "uuid": "a-b-c", "fingerprint": "ab:cd", "version": None}
     v = {"name": "vault"}
     vault.connect = MagicMock(return_value=False)
     vault.list_user_keys = MagicMock(return_value=[user])
