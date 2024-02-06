@@ -5,6 +5,7 @@ import secrets
 import sys
 from contextlib import contextmanager
 from getpass import getpass
+from typing import Any
 
 from cryptography.hazmat.primitives import hashes, serialization
 from psycopg2 import connect
@@ -24,17 +25,19 @@ Tables = [
     "vault_right",
 ]
 
+DataList = list[dict]
+
 
 class Vault:
-    def __init__(self, verbose=False):
+    def __init__(self, verbose: bool = False):
         self.conn = None
         self.verbose = verbose
 
-    def connect(self, **kwargs):
+    def connect(self, **kwargs: Any) -> bool:
         self.conn = connect(**{k: v for k, v in kwargs.items() if v is not None})
         return self.check_database()
 
-    def exists(self, cr, table, column=None):
+    def exists(self, cr: DictCursor, table: str, column: str | None = None) -> bool:
         """Check if the table (and column) exists in the database"""
         query = """
             SELECT 1 FROM information_schema.columns
@@ -49,11 +52,11 @@ class Vault:
         return bool(cr.rowcount)
 
     @contextmanager
-    def cursor(self):
+    def cursor(self) -> DictCursor:
         with self.conn.cursor(cursor_factory=DictCursor) as cr:
             yield cr
 
-    def check_database(self):
+    def check_database(self) -> bool:
         with self.cursor() as cr:
             try:
                 for table in sorted(Tables):
@@ -65,7 +68,7 @@ class Vault:
             except UndefinedTable:
                 return False
 
-    def list_user_keys(self, user_uuid=None):
+    def list_user_keys(self, user_uuid: str | None = None) -> DataList:
         """List all available user keys"""
         with self.cursor() as cr:
             if self.exists(cr, "res_users_key", "version"):
@@ -78,7 +81,8 @@ class Vault:
                 FROM res_users_key AS k
                 LEFT JOIN res_users AS u
                 ON u.id = k.user_id
-                WHERE k.current = true"""
+                WHERE k.current = true
+            """
 
             if user_uuid:
                 query += " AND k.uuid = %s"
@@ -86,7 +90,7 @@ class Vault:
             cr.execute(query, (user_uuid,))
             return list(map(dict, cr.fetchall()))
 
-    def list_vaults(self, uuuid=None, vuuid=None):
+    def list_vaults(self, uuuid: str | None = None, vuuid: str | None = None) -> dict:
         """List all available vaults of the database"""
         with self.cursor() as cr:
             query = """
@@ -96,15 +100,16 @@ class Vault:
                 JOIN vault_right AS r ON r.user_id = u.id
                 LEFT JOIN vault AS v ON v.id = r.vault_id"""
 
+            args: list[str] | None
             if uuuid and vuuid:
                 query += " WHERE k.uuid = %s AND v.uuid = %s"
-                args = (uuuid, vuuid)
+                args = [uuuid, vuuid]
             elif uuuid:
                 query += " WHERE k.uuid = %s"
-                args = (uuuid,)
+                args = [uuuid]
             elif vuuid:
                 query += " WHERE v.uuid = %s"
-                args = (vuuid,)
+                args = [vuuid]
             else:
                 args = None
 
@@ -117,7 +122,7 @@ class Vault:
                 data[v["uuid"]]["users"].add(v["user"])
             return data
 
-    def getpass(self, password, passfile):
+    def getpass(self, password: str, passfile: str) -> str:
         passwd = ""
         if password:
             passwd = getpass("Please enter the password: ", stream=sys.stderr)
@@ -129,7 +134,7 @@ class Vault:
 
         return passwd
 
-    def extract_private_key(self, key_uuid):
+    def extract_private_key(self, key_uuid: str) -> dict[str, Any]:
         """Extract information about the key from the database"""
         with self.cursor() as cr:
             if self.exists(cr, "res_users_key", "version"):
@@ -139,29 +144,31 @@ class Vault:
 
             cr.execute(
                 f"""
-                SELECT k.iv, k.fingerprint, k.salt, k.iterations, k.private, u.login
-                    {additional}
-                FROM res_users_key AS k
-                LEFT JOIN res_users AS u ON u.id = k.user_id
-                WHERE k.uuid = %s AND k.current = true""",
+                    SELECT k.iv, k.fingerprint, k.salt, k.iterations, k.private,
+                        u.login {additional}
+                    FROM res_users_key AS k
+                    LEFT JOIN res_users AS u ON u.id = k.user_id
+                    WHERE k.uuid = %s AND k.current = true
+                """,
                 (key_uuid,),
             )
             return dict(cr.fetchone()) if cr.rowcount else {}
 
-    def _extract_files(self, cr, entry_id):
+    def _extract_files(self, cr: DictCursor, entry_id: int) -> DataList:
         """Extract all files of the given entry"""
         cr.execute(
             """
-            SELECT id, name, iv, value, create_date, write_date
-            FROM vault_file WHERE entry_id = %s""",
+                SELECT id, name, iv, value, create_date, write_date
+                FROM vault_file WHERE entry_id = %s
+            """,
             (entry_id,),
         )
-        files = list(map(dict, cr.fetchall()))
+        files: DataList = list(map(dict, cr.fetchall()))
         for file in files:
             file["value"] = bytes(file["value"])
         return files
 
-    def _extract_fields(self, cr, entry_id):
+    def _extract_fields(self, cr: DictCursor, entry_id: int) -> DataList:
         """Extract all fields of the given entry"""
         cr.execute(
             """
@@ -171,7 +178,9 @@ class Vault:
         )
         return list(map(dict, cr.fetchall()))
 
-    def _extract_entries(self, cr, vault_id, parent_id=None):
+    def _extract_entries(
+        self, cr: DictCursor, vault_id: int, parent_id: int | None = None
+    ) -> DataList:
         """Extract all entries of the vault"""
         query = """
             SELECT
@@ -187,6 +196,7 @@ class Vault:
         else:
             cr.execute(f"{query} AND e.parent_id = %s", (vault_id, parent_id))
 
+        entries: DataList = list(map(dict, cr.fetchall()))
         return [
             {
                 **entry,
@@ -194,10 +204,10 @@ class Vault:
                 "files": self._extract_files(cr, entry["id"]),
                 "childs": self._extract_entries(cr, vault_id, entry["id"]),
             }
-            for entry in list(map(dict, cr.fetchall()))
+            for entry in entries
         ]
 
-    def _extract_rights(self, cr, vault_id):
+    def _extract_rights(self, cr: DictCursor, vault_id: int) -> dict:
         """Extract all rights of the vault"""
         cr.execute(
             """
@@ -210,7 +220,7 @@ class Vault:
         )
         return {right["uuid"]: right["key"] for right in cr.fetchall()}
 
-    def _extract_vault(self, uuid):
+    def _extract_vault(self, uuid: str) -> dict:
         """Extract the specific vault"""
         with self.cursor() as cr:
             cr.execute(
@@ -231,7 +241,7 @@ class Vault:
             )
             return vault
 
-    def extract(self, user_uuid, vault_uuid=None):
+    def extract(self, user_uuid: str, vault_uuid: str | None = None) -> dict:
         """Extract data from the database and store it in an exported file"""
         vaults = vault_uuid if vault_uuid else self.list_vaults(user_uuid)
         return {
@@ -241,7 +251,7 @@ class Vault:
             "vaults": list(map(self._extract_vault, vaults)),
         }
 
-    def _decrypt_entry(self, master_key, entry):
+    def _decrypt_entry(self, master_key: str, entry: dict) -> None:
         """Decrypt all entries of the vault"""
         for child in entry.get("childs", []):
             self._decrypt_entry(master_key, child)
@@ -266,7 +276,7 @@ class Vault:
                 hash_prefix=True,
             ).decode()
 
-    def decrypt_private_key(self, data, password):
+    def decrypt_private_key(self, data: dict, password: str) -> str | None:
         """Request the password to decrypt the private RSA key"""
         utils.info(f"Using key {data['fingerprint']} for {data['login']}")
 
@@ -287,16 +297,19 @@ class Vault:
         # Decrypt the private key of the user
         private = utils.sym_decrypt(data["iv"], data["private"], secret)
 
+        if not private:
+            return None
+
         # Load the private key from the decrypted PEM format
         pem = utils.PEMFormat % base64.b64encode(private)
         return serialization.load_pem_private_key(pem, password=None)
 
-    def _decrypt_master_key(self, data, private_key):
+    def _decrypt_master_key(self, data: str, private_key: str) -> utils.Symmetric:
         """Decrypt the master key for the vault"""
         master_key = private_key.decrypt(base64.b64decode(data), padding=utils.Padding)
         return utils.Symmetric(master_key)
 
-    def decrypt(self, data, password):
+    def decrypt(self, data: dict, password: str) -> dict | None:
         """Decrypt an encrypted file and output it as raw"""
         fields = ["data", "iterations", "iv", "salt"]
         if data.get("type") != "encrypted" or not all(map(data.get, fields)):
@@ -307,12 +320,15 @@ class Vault:
         key = utils.derive_key(password.encode(), salt, 4000)
 
         decrypted = utils.sym_decrypt(iv, data["data"], key, True)
+        if not decrypted:
+            return None
+
         return {
             "type": "raw",
             "data": json.loads(decrypted),
         }
 
-    def recover(self, data, user_uuid, private_key):
+    def recover(self, data: dict, user_uuid: str, private_key: str) -> dict | None:
         """Recover the vaults using the private key on plain data"""
         key = data.get("rights", {}).get(user_uuid)
         if not key:
@@ -325,13 +341,13 @@ class Vault:
 
         return {"type": "plain", "data": data}
 
-    def convert_to_raw(self, data):
+    def convert_to_raw(self, data: dict) -> dict | None:
         """Convert the plain decrypted data to an importable format"""
         if data.get("type") == "plain" and data.get("data"):
             return {"type": "raw", "data": data["data"].get("entries", [])}
         return None
 
-    def save_vault_files(self, data, directory):
+    def save_vault_files(self, data: dict, directory: str) -> None:
         """Takes plain/raw data and saves it inside of the given folder. Each entry
         will be stored in a sub-directory named like the entry's uuid where all files
         are stored"""
@@ -358,7 +374,7 @@ class Vault:
                 with open(os.path.join(path, file["name"]), "wb+") as fp:
                     fp.write(base64.b64decode(file["value"]))
 
-    def encrypt(self, data, password=None):
+    def encrypt(self, data: dict, password: str | None = None) -> dict | None:
         """Encrypt raw data and output it as encrypted data"""
         if data.get("type") != "raw" or not data.get("data"):
             return None

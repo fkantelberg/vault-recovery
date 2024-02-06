@@ -2,6 +2,7 @@ import base64
 import json
 import sys
 from datetime import datetime
+from typing import Any, Callable
 
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding
@@ -22,25 +23,27 @@ Symmetric = algorithms.AES
 SymmetricLength = 256
 TagLength = 128
 
+IV = str | bytes
 
-def error(msg):
+
+def error(msg: str) -> None:
     print(msg, file=sys.stderr)
 
 
-def info(msg):
+def info(msg: str) -> None:
     print(msg, file=sys.stderr)
 
 
-def file_type(mode="r"):
+def file_type(mode: str = "r") -> Callable:
     def wrapper(x):
         if x == "-":
             return sys.stdin
-        return open(x, mode)
+        return open(x, mode, encoding="utf-8")
 
     return wrapper
 
 
-def serialize(obj):
+def serialize(obj: Any) -> str | None:
     """Serialize some values of the database directly"""
     if isinstance(obj, datetime):
         return obj.isoformat(" ")
@@ -48,12 +51,19 @@ def serialize(obj):
     if isinstance(obj, bytes):
         return obj.decode()
 
+    return None
 
-def output(content):
+
+def output(content: Any) -> None:
     print(json.dumps(content, indent=2, default=serialize))
 
 
-def derive_key(password, salt, iterations):
+def dump_json(filename: str, content: Any) -> None:
+    with open(filename, "w+", encoding="utf-8") as fp:
+        json.dump(content, fp, sort_keys=True, indent=2, default=serialize)
+
+
+def derive_key(password: bytes, salt: bytes, iterations: int) -> algorithms.AES:
     """Derive the secret from the password"""
     secret = pbkdf2.PBKDF2HMAC(
         Hash,
@@ -65,7 +75,9 @@ def derive_key(password, salt, iterations):
     return Symmetric(secret)
 
 
-def sym_decrypt(iv, value, key, hash_prefix=False):
+def sym_decrypt(
+    iv: IV, value: str, key: algorithms.AES, hash_prefix: bool = False
+) -> bytes | None:
     """Wrapper to decrypt a value using the key and iv compatible with
     Web Crypto API"""
     if isinstance(iv, str):
@@ -93,7 +105,9 @@ def sym_decrypt(iv, value, key, hash_prefix=False):
     return decrypted
 
 
-def sym_encrypt(iv, value, key, hash_prefix=False):
+def sym_encrypt(
+    iv: IV, value: str, key: algorithms.AES, hash_prefix: bool = False
+) -> str:
     """Wrapper to encrypt a value using key and iv compatible with
     Web Crypto API"""
     if isinstance(iv, str):

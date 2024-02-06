@@ -98,14 +98,14 @@ def test_save_to_files(vault):
         vault.save_vault_files(example.Plain, d)
 
         filename = os.path.join(d, "4d1bfb58-765f-423c-ada0-b612f791e4f7", "test.txt")
-        with open(filename) as fp:
+        with open(filename, encoding="utf-8") as fp:
             assert fp.read() == "hello world\n"
 
     with TemporaryDirectory() as d:
         vault.save_vault_files(example.Raw, d)
 
         filename = os.path.join(d, "4d1bfb58-765f-423c-ada0-b612f791e4f7", "test.txt")
-        with open(filename) as fp:
+        with open(filename, encoding="utf-8") as fp:
             assert fp.read() == "hello world\n"
 
     with TemporaryDirectory() as d:

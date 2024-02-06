@@ -4,17 +4,11 @@ import os
 import sys
 from getpass import getpass
 
-from .utils import error, file_type, info, output, serialize
+from .utils import dump_json, error, file_type, info, output, serialize
 from .vault import Tables, Vault
 
 
-def parser_add_basics(parser):
-    parser.add_argument(
-        "-v",
-        "--verbose",
-        default=False,
-        action="store_true",
-    )
+def parser_add_database(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-d",
         "--database",
@@ -49,7 +43,9 @@ def parser_add_basics(parser):
     )
 
 
-def parser_add_selection(parser, require_user=False):
+def parser_add_selection(
+    parser: argparse.ArgumentParser, require_user: bool = False
+) -> None:
     parser.add_argument(
         "--user",
         default=None,
@@ -65,7 +61,7 @@ def parser_add_selection(parser, require_user=False):
     )
 
 
-def parse_args(args=None):
+def prepare_parser() -> argparse.ArgumentParser:
     tables = ", ".join(map(repr, Tables[:-1])) + f" and {repr(Tables[-1])}"
 
     parser = argparse.ArgumentParser(
@@ -75,9 +71,16 @@ def parse_args(args=None):
         "are required for a recovery."
     )
 
-    sub = parser.add_subparsers(dest="mode")
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        default=False,
+        action="store_true",
+    )
+
+    sub = parser.add_subparsers(dest="mode", required=True)
     subparser = sub.add_parser("info", help="Gather information from the database")
-    parser_add_basics(subparser)
+    parser_add_database(subparser)
     subparser.add_argument(
         "--user",
         default=None,
@@ -95,14 +98,14 @@ def parse_args(args=None):
         "useful to move the data to another machine to decrypt it in a secure "
         "environment.",
     )
-    parser_add_basics(subparser)
+    parser_add_database(subparser)
     parser_add_selection(subparser, True)
 
     subparser = sub.add_parser(
         "decrypt",
         help="Decrypt an encrypted file exported from a vault",
     )
-    parser_add_basics(subparser)
+    parser_add_database(subparser)
     subparser.add_argument(
         "-i",
         "--input",
@@ -134,7 +137,7 @@ def parse_args(args=None):
         "encrypt",
         help="Encrypt a raw file exported from a vault",
     )
-    parser_add_basics(subparser)
+    parser_add_database(subparser)
     subparser.add_argument(
         "-i",
         "--input",
@@ -163,7 +166,7 @@ def parse_args(args=None):
         "importable by the vault module as raw or encrypted version. Files inside of "
         "the vaults are additionally placed in subdirectories.",
     )
-    parser_add_basics(subparser)
+    parser_add_database(subparser)
     parser_add_selection(subparser)
     subparser.add_argument(
         "-i",
@@ -227,10 +230,10 @@ def parse_args(args=None):
         "a `encrypted.json` file",
     )
 
-    return parser.parse_args(args)
+    return parser
 
 
-def main_info(vault, args, db_params):
+def main_info(vault: Vault, args: argparse.Namespace, db_params: dict) -> None:
     if not vault.connect(**db_params):
         error("There is no vault in the current database")
         return
@@ -243,19 +246,19 @@ def main_info(vault, args, db_params):
             info(f"    {v['name']} [{uuid}]")
 
 
-def main_export(vault, args, db_params):
+def main_export(vault: Vault, args: argparse.Namespace, db_params: dict) -> dict | None:
     if not vault.connect(**db_params):
         error("There is no vault in the current database")
-        return
+        return None
 
     if not args.user:
         error("Missing user")
-        return
+        return None
 
     return vault.extract(args.user, args.vault)
 
 
-def main_encrypt(vault, args):
+def main_encrypt(vault: Vault, args: argparse.Namespace) -> None:
     content = json.load(args.input)
 
     password = vault.getpass(args.password, args.passfile)
@@ -267,23 +270,23 @@ def main_encrypt(vault, args):
     output(encrypted)
 
 
-def main_decrypt(vault, args):
+def main_decrypt(vault: Vault, args: argparse.Namespace) -> None:
     content = json.load(args.input)
 
     password = vault.getpass(args.password, args.passfile)
     raw = vault.decrypt(content, password)
 
-    if args.output:
+    if args.output and raw:
         os.makedirs(args.output, exist_ok=True)
         vault.save_vault_files(raw, args.output)
 
-        with open(os.path.join(args.output, "raw.json"), "w+") as fp:
+        with open(os.path.join(args.output, "raw.json"), "w+", encoding="utf-8") as fp:
             json.dump(raw, fp, sort_keys=True, indent=2, default=serialize)
     else:
         output(raw)
 
 
-def main_recover(vault, args, db_params):
+def main_recover(vault: Vault, args: argparse.Namespace, db_params: dict) -> None:
     if not args.password and not args.passfile:
         error("Neither password nor passfile given")
         return
@@ -299,6 +302,9 @@ def main_recover(vault, args, db_params):
     info("Decrypting private key.")
     password = vault.getpass(args.password, args.passfile)
     private_key = vault.decrypt_private_key(content["private"], password=password)
+    if not private_key:
+        error("Private key is not decryptable")
+        sys.exit(1)
 
     if args.encrypt_password or args.encrypt_passfile:
         info("Building encryption key")
@@ -320,33 +326,28 @@ def main_recover(vault, args, db_params):
         raw = vault.convert_to_raw(plain)
         path = os.path.join(args.output, vuuid)
         os.makedirs(path, exist_ok=True)
-        if args.files:
+        if args.files and plain:
             vault.save_vault_files(plain, path)
 
         if args.plain:
-            with open(os.path.join(path, "plain.json"), "w+") as fp:
-                json.dump(plain, fp, sort_keys=True, indent=2, default=serialize)
+            dump_json(os.path.join(path, "plain.json"), plain)
 
         if args.raw:
-            with open(os.path.join(path, "raw.json"), "w+") as fp:
-                json.dump(raw, fp, sort_keys=True, indent=2, default=serialize)
+            dump_json(os.path.join(path, "raw.json"), raw)
 
-        if encrypt_password:
+        if raw and encrypt_password:
             encrypted = vault.encrypt(raw, password=encrypt_password)
-
-            with open(os.path.join(path, "encrypted.json"), "w+") as fp:
-                json.dump(encrypted, fp, sort_keys=True, indent=2, default=serialize)
+            dump_json(os.path.join(path, "encrypted.json"), encrypted)
 
 
-def main(args=None):
-    args = parse_args(args)
-
+def db_params(args: argparse.Namespace) -> dict[str, str | int | None]:
+    """Prepate the database parameter from the arguments"""
     if args.db_password:
         db_password = getpass("Please enter the database password: ")
     else:
         db_password = None
 
-    db_params = {
+    return {
         "dbname": args.db_name,
         "host": args.db_host,
         "user": args.db_user,
@@ -354,14 +355,20 @@ def main(args=None):
         "port": args.db_port,
     }
 
+
+def main() -> None:
+    parser = prepare_parser()
+
+    args = parser.parse_args()
+
     vault = Vault(verbose=args.verbose)
     if args.mode == "info":
-        main_info(vault, args, db_params)
+        main_info(vault, args, db_params(args))
     elif args.mode == "export":
-        content = main_export(vault, args, db_params)
+        content = main_export(vault, args, db_params(args))
         output(content)
     elif args.mode == "recover":
-        main_recover(vault, args, db_params)
+        main_recover(vault, args, db_params(args))
     elif args.mode == "decrypt":
         main_decrypt(vault, args)
     elif args.mode == "encrypt":
