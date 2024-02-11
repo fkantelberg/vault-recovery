@@ -1,17 +1,21 @@
 import base64
 import json
+import logging
 import sys
 from datetime import datetime
 from typing import Any, Callable
 
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.kdf import pbkdf2
+
+_logger = logging.getLogger("vault")
 
 HashLength = 10
 Hash = hashes.SHA512
 IVLength = 12
+Iterations = 600_001
 Padding = padding.OAEP(
     mgf=padding.MGF1(algorithm=Hash()),
     algorithm=Hash(),
@@ -19,6 +23,8 @@ Padding = padding.OAEP(
 )
 PEMFormat = b"-----BEGIN PRIVATE KEY-----\n%s\n-----END PRIVATE KEY-----"
 SaltLength = 32
+PrivateKey = rsa.RSAPrivateKey
+SharePinSize = 5
 Symmetric = algorithms.AES
 SymmetricLength = 256
 TagLength = 128
@@ -66,7 +72,7 @@ def dump_json(filename: str, content: Any) -> None:
 def derive_key(password: bytes, salt: bytes, iterations: int) -> algorithms.AES:
     """Derive the secret from the password"""
     secret = pbkdf2.PBKDF2HMAC(
-        Hash,
+        Hash(),
         iterations=iterations,
         length=SymmetricLength >> 3,
         salt=salt,

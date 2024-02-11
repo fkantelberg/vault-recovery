@@ -3,7 +3,6 @@ from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock, patch
 
 import pytest
-from psycopg2.errors import UndefinedTable
 
 from vault import Vault, utils
 
@@ -35,7 +34,7 @@ def test_check_database(vault):
 
     assert vault.check_database()
 
-    cursor.execute.side_effect = UndefinedTable
+    vault.exists = MagicMock(return_value=False)
     assert not vault.check_database()
 
 
@@ -61,7 +60,7 @@ def test_getpass(getpass_mock, vault):
     passfile = MagicMock()
     passfile.read.return_value = b"def"
 
-    assert vault.getpass(True, None) == "abc"
+    assert vault.getpass(True, False) == "abc"
     getpass_mock.assert_called_once()
     passfile.read.assert_not_called()
 
@@ -75,7 +74,7 @@ def test_conversion(vault):
     assert vault.convert_to_raw(example.Plain) == example.Raw
 
     private_key = vault.decrypt_private_key(example.PrivateKey, password="test")
-    recovered = vault.recover(
+    recovered = vault.recover_vault(
         example.Exported,
         "60341751-62c2-4a2d-ae54-c5734e90bf47",
         private_key,
@@ -89,7 +88,7 @@ def test_conversion(vault):
 
     assert vault.encrypt(encrypted, "test") is None
     assert vault.decrypt(example.Raw, "test") is None
-    assert vault.recover(example.Exported, "test", private_key) is None
+    assert vault.recover_vault(example.Exported, "test", private_key) is None
     assert vault.convert_to_raw(example.Raw) is None
 
 
@@ -190,7 +189,7 @@ def test_extraction(vault):
     vault.extract_private_key = MagicMock()
     vault.list_vaults = MagicMock()
 
-    extracted = vault.extract("user")
+    extracted = vault.extract("user", [], [], [], extract_vault=True)
     assert all(x in extracted for x in ["type", "vaults", "private", "uuid"])
     vault.extract_private_key.assert_called_once_with("user")
     vault.list_vaults.assert_called_once_with("user")

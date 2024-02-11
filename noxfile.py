@@ -2,14 +2,16 @@ import nox
 
 
 @nox.session()
-def clean(session):
+def clean(session: nox.Session):
     session.install("coverage")
     session.run("coverage", "erase")
 
 
 @nox.session()
-def py3(session):
+def py3(session: nox.Session):
     session.install(
+        "-e",
+        ".",
         "pytest",
         "pytest-cov",
         "pytest-timeout",
@@ -19,7 +21,7 @@ def py3(session):
     )
     session.run(
         "pytest",
-        "--cov=src/vault",
+        "--cov=vault",
         "--cov-append",
         "-n=4",
         "--timeout=5",
@@ -27,7 +29,7 @@ def py3(session):
 
 
 @nox.session()
-def report(session):
+def report(session: nox.Session):
     session.install("coverage")
     session.run("coverage", "html")
     session.run("coverage", "report", "--fail-under=80")
